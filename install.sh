@@ -51,17 +51,27 @@ cc -shared -fPIC -O2 -o "$SO_PATH" "$REPO_DIR/src/cef_noframe.c" -ldl
 say "Built $(du -h "$SO_PATH" | cut -f1) shared object"
 
 # --- find a base .desktop to derive the launcher from ---------------------
+# Covers the AUR `spotify`/official .deb (spotify.desktop), the
+# `spotify-launcher` package (spotify-launcher.desktop), and snap.
 BASE_DESKTOP="${SPOTIFY_DESKTOP:-}"
 if [ -z "$BASE_DESKTOP" ]; then
   for d in /usr/share/applications/spotify.desktop \
            /usr/local/share/applications/spotify.desktop \
+           /usr/share/applications/spotify-launcher.desktop \
+           /usr/local/share/applications/spotify-launcher.desktop \
            /var/lib/snapd/desktop/applications/spotify_spotify.desktop; do
     [ -e "$d" ] && { BASE_DESKTOP="$d"; break; }
   done
 fi
 
 mkdir -p "$APP_DIR"
-OUT_DESKTOP="$APP_DIR/spotify.desktop"
+# Shadow the system entry by reusing its basename, so we don't end up with a
+# duplicate "Spotify" item in the app menu next to the stock one.
+if [ -n "$BASE_DESKTOP" ]; then
+  OUT_DESKTOP="$APP_DIR/$(basename "$BASE_DESKTOP")"
+else
+  OUT_DESKTOP="$APP_DIR/spotify.desktop"
+fi
 
 if [ -n "$BASE_DESKTOP" ] && [ -e "$BASE_DESKTOP" ]; then
   say "Deriving launcher from $BASE_DESKTOP"
@@ -73,14 +83,21 @@ if [ -n "$BASE_DESKTOP" ] && [ -e "$BASE_DESKTOP" ]; then
   ' "$BASE_DESKTOP" > "$OUT_DESKTOP"
 else
   warn "No system spotify.desktop found; writing a minimal launcher."
+  # Prefer spotify-launcher if present (it execs the real spotify binary, and
+  # LD_PRELOAD is inherited by that child), else fall back to a bare spotify.
+  if command -v spotify-launcher >/dev/null 2>&1; then
+    SPOTIFY_CMD="spotify-launcher"; SPOTIFY_TRYEXEC="spotify-launcher"; SPOTIFY_ARGS="%U"
+  else
+    SPOTIFY_CMD="spotify"; SPOTIFY_TRYEXEC="spotify"; SPOTIFY_ARGS="--uri=%u"
+  fi
   cat > "$OUT_DESKTOP" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Spotify
 GenericName=Music Player
 Icon=spotify-client
-TryExec=spotify
-Exec=env LD_PRELOAD=$SO_PATH spotify --uri=%u
+TryExec=$SPOTIFY_TRYEXEC
+Exec=env LD_PRELOAD=$SO_PATH $SPOTIFY_CMD $SPOTIFY_ARGS
 Terminal=false
 MimeType=x-scheme-handler/spotify;
 Categories=Audio;Music;Player;AudioVideo;
@@ -97,6 +114,12 @@ echo
 say "Done. Fully quit Spotify (pkill -f spotify) and relaunch it from your"
 say "app launcher / menu. The white title bar should be gone."
 echo
-warn "Note: launching bare 'spotify' from a terminal bypasses this .desktop."
-warn "For that, run:  LD_PRELOAD=$SO_PATH spotify"
-warn "or add a shell alias (see README)."
+if command -v spotify-launcher >/dev/null 2>&1; then
+  warn "Note: launching bare 'spotify-launcher' from a terminal bypasses this .desktop."
+  warn "For that, run:  LD_PRELOAD=$SO_PATH spotify-launcher"
+  warn "or add a shell alias (see README)."
+else
+  warn "Note: launching bare 'spotify' from a terminal bypasses this .desktop."
+  warn "For that, run:  LD_PRELOAD=$SO_PATH spotify"
+  warn "or add a shell alias (see README)."
+fi

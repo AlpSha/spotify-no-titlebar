@@ -103,8 +103,11 @@ pkill -f spotify
 ```
 
 That's it. `install.sh` builds `~/.local/lib/cef-noframe.so` and writes a
-per-user `~/.local/share/applications/spotify.desktop` (derived from your
-system one) that preloads it. The system install is left untouched.
+per-user `.desktop` under `~/.local/share/applications/` (derived from your
+system one — `spotify.desktop` for the AUR/`.deb` package, or
+`spotify-launcher.desktop` for `spotify-launcher`) that preloads it. The
+per-user copy shadows the stock entry, so no duplicate shows up in your app
+menu, and the system install is left untouched.
 
 ## Uninstall
 
